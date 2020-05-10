@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/physcat/tcpheader"
 	"github.com/spf13/cobra"
@@ -41,15 +42,13 @@ func serverMain(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Listening on: %s\n", ln.Addr())
 
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			fmt.Printf("Failed to accept: %+v\n", err)
-			return
-		}
-
-		go handleServerConnection(conn, cmd)
+	conn, err := ln.Accept()
+	if err != nil {
+		fmt.Printf("Failed to accept: %+v\n", err)
+		return
 	}
+
+	handleServerConnection(conn, cmd)
 }
 
 func handleServerConnection(conn net.Conn, cmd *cobra.Command) {
@@ -61,9 +60,29 @@ func handleServerConnection(conn net.Conn, cmd *cobra.Command) {
 		PrintHeaderError(cmd)
 		return
 	}
+	echo, _ := cmd.Flags().GetBool("echo")
 
-	msg, _ := cmd.Flags().GetString("message")
-	listen, _ := cmd.Flags().GetBool("listen")
+	netMsg := ReadWithHeaderC(conn, header)
+	stdinMsg := ReadPlainC(os.Stdin)
 
-	ReadAndWrite(conn, listen, msg, header)
+	for {
+		select {
+		case msg, ok := <-netMsg:
+			fmt.Printf("net>%q\n", msg)
+			if !ok {
+				return
+			}
+
+		case msg, ok := <-stdinMsg:
+			if !ok {
+				return
+			}
+			if echo {
+				fmt.Printf("stdio>%q\n", msg)
+			}
+			if err := tcpheader.WriteMessage(conn, []byte(msg), header); err != nil {
+				return
+			}
+		}
+	}
 }

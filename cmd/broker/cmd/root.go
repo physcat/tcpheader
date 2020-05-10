@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -43,6 +44,7 @@ func init() {
 	rootCmd.PersistentFlags().String("port", "8080", "port to use")
 
 	rootCmd.PersistentFlags().Int("header", 2, "Header length")
+	rootCmd.PersistentFlags().Bool("echo", false, "echo back stdin")
 }
 
 func initConfig() {
@@ -87,54 +89,37 @@ Currently only 2 and 4 are supported.
 `, h)
 }
 
-func ReadAndWrite(r io.ReadWriter, listen bool, msg string, header tcpheader.HeaderType) {
-	switch listen {
-	case true:
-		// Read response
-		l, err := tcpheader.ReadLen(r, header)
-		if err != nil {
-			fmt.Printf("Error reading form conn: %+v\n", err)
-			return
+func ReadPlainC(r io.Reader) chan string {
+	output := make(chan string)
+	scanner := bufio.NewScanner(r)
+	go func() {
+		for scanner.Scan() {
+			output <- scanner.Text()
 		}
+		close(output)
+	}()
 
-		buf := make([]byte, l)
-		if err = tcpheader.ReadMessage(r, buf); err != nil {
-			fmt.Printf("Error reading form conn: %+v\n", err)
-			return
+	return output
+}
+
+//Return a channel unbuffered channel that returns things read from reader
+func ReadWithHeaderC(r io.Reader, header tcpheader.HeaderType) chan string {
+	output := make(chan string)
+	go func() {
+		for {
+			l, err := tcpheader.ReadLen(r, header)
+			if err != nil {
+				close(output)
+				return
+			}
+
+			buf := make([]byte, l)
+			if err = tcpheader.ReadMessage(r, buf); err != nil {
+				close(output)
+				return
+			}
+			output <- string(buf)
 		}
-
-		fmt.Printf("Received message: %s\n", buf)
-
-		//Send Message
-		fmt.Printf("Sending message: %s\n", msg)
-
-		if err := tcpheader.WriteMessage(r, []byte(msg), header); err != nil {
-			fmt.Printf("Failed to write: %+v", err)
-			return
-		}
-
-	case false:
-		//Send Message
-		fmt.Printf("Sending message: %s\n", msg)
-
-		if err := tcpheader.WriteMessage(r, []byte(msg), header); err != nil {
-			fmt.Printf("Failed to write: %+v", err)
-			return
-		}
-
-		// Read response
-		l, err := tcpheader.ReadLen(r, header)
-		if err != nil {
-			fmt.Printf("Error reading form conn: %+v\n", err)
-			return
-		}
-
-		buf := make([]byte, l)
-		if err = tcpheader.ReadMessage(r, buf); err != nil {
-			fmt.Printf("Error reading form conn: %+v\n", err)
-			return
-		}
-
-		fmt.Printf("Received message: %s\n", buf)
-	}
+	}()
+	return output
 }

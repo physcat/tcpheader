@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/physcat/tcpheader"
@@ -49,8 +50,29 @@ func clientMain(cmd *cobra.Command, args []string) {
 
 	defer conn.Close()
 
-	listen, _ := cmd.Flags().GetBool("listen")
-	msg, _ := cmd.Flags().GetString("message")
+	echo, _ := cmd.Flags().GetBool("echo")
 
-	ReadAndWrite(conn, listen, msg, header)
+	netMsg := ReadWithHeaderC(conn, header)
+	stdinMsg := ReadPlainC(os.Stdin)
+
+	for {
+		select {
+		case msg, ok := <-netMsg:
+			fmt.Printf("net>%q\n", msg)
+			if !ok {
+				return
+			}
+
+		case msg, ok := <-stdinMsg:
+			if !ok {
+				return
+			}
+			if echo {
+				fmt.Printf("stdio>%q\n", msg)
+			}
+			if err := tcpheader.WriteMessage(conn, []byte(msg), header); err != nil {
+				return
+			}
+		}
+	}
 }
