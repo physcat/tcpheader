@@ -7,13 +7,18 @@ import (
 	"io"
 )
 
+// ErrUnknownHeader ...
 var ErrUnknownHeader error = fmt.Errorf("unknown header")
 
+// HeaderType ...
 type HeaderType int
 
 const (
+	// Unknown ...
 	Unknown = iota
+	// TwoByteUnsigned ...
 	TwoByteUnsigned
+	// FourByteUnsigned ...
 	FourByteUnsigned
 )
 
@@ -31,6 +36,7 @@ func (h HeaderType) String() string {
 	return names[h]
 }
 
+// ReadLen ...
 func ReadLen(r io.Reader, h HeaderType) (int, error) {
 	switch h {
 	case TwoByteUnsigned:
@@ -56,6 +62,7 @@ func ReadLen(r io.Reader, h HeaderType) (int, error) {
 	return 0, ErrUnknownHeader
 }
 
+// ReadMessage ...
 func ReadMessage(r io.Reader, p []byte) error {
 	for len(p) > 0 {
 		n, err := r.Read(p)
@@ -69,6 +76,7 @@ func ReadMessage(r io.Reader, p []byte) error {
 	return nil
 }
 
+// WriteMessage ...
 func WriteMessage(r io.Writer, p []byte, h HeaderType) error {
 	var err error
 
@@ -98,4 +106,27 @@ func WriteMessage(r io.Writer, p []byte, h HeaderType) error {
 	}
 
 	return nil
+}
+
+// ReadC return a channel unbuffered channel
+// that returns bytes read from reader
+func ReadC(r io.Reader, header HeaderType) chan []byte {
+	output := make(chan []byte)
+	go func() {
+		defer close(output)
+		for {
+			l, err := ReadLen(r, header)
+			if err != nil {
+				return
+			}
+
+			buf := make([]byte, l)
+			if err = ReadMessage(r, buf); err != nil {
+				return
+			}
+			output <- buf
+		}
+	}()
+
+	return output
 }

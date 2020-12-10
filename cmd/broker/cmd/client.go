@@ -39,15 +39,27 @@ func clientMain(cmd *cobra.Command, args []string) {
 
 	var d net.Dialer
 
+	host, err := cmd.Flags().GetString("host")
+	if err != nil {
+		host = "localhost"
+	}
+	port, err := cmd.Flags().GetString("port")
+	if err != nil {
+		port = "8080"
+	}
+
+	connStr := fmt.Sprintf("%s:%s", host, port)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	conn, err := d.DialContext(ctx, "tcp", "localhost:8080")
+	fmt.Println("Dialing", connStr)
+
+	conn, err := d.DialContext(ctx, "tcp", connStr)
 	if err != nil {
 		fmt.Printf("Failed to dial: %+v", err)
 		return
 	}
-
 	defer conn.Close()
 
 	echo, _ := cmd.Flags().GetBool("echo")
